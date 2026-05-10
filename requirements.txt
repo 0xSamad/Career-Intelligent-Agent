@@ -1,0 +1,7 @@
+crewai
+crewai-tools
+gradio
+python-dotenv
+langchain-openai
+ddgs
+langchain-community
