@@ -1,5 +1,4 @@
-crewai
-crewai-tools
+crewai[litellm,tools]
 gradio
 python-dotenv
 langchain-openai
@@ -9,4 +8,4 @@ pymupdf
 python-docx
 fastapi
 uvicorn
-litellm
+langchain-groq
