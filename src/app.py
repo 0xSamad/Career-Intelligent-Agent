@@ -1,5 +1,6 @@
 import os
 import gradio as gr
+from fastapi import FastAPI
 from crew import run_career_intelligence
 from utils import extract_text_from_file, parse_resume_with_ai
 
@@ -338,7 +339,7 @@ button#submit-btn {
 """
 
 # ── UI ────────────────────────────────────────────────────────────────────────
-with gr.Blocks(title="Career Intelligence Agent") as app:
+with gr.Blocks(title="Career Intelligence Agent", theme=gr.themes.Base(), css=CUSTOM_CSS) as gradio_app:
 
     with gr.Row(elem_id="top-header"):
         gr.Markdown("# 🚀 Career Intelligence Agent")
@@ -404,11 +405,10 @@ with gr.Blocks(title="Career Intelligence Agent") as app:
         outputs=[jobs_out, match_out, gap_out, roadmap_out],
     )
 
+app = FastAPI()
+app = gr.mount_gradio_app(app, gradio_app, path="/")
+
 if __name__ == "__main__":
+    import uvicorn
     port = int(os.environ.get("PORT", 7860))
-    app.launch(
-        server_name="0.0.0.0",
-        server_port=port,
-        theme=gr.themes.Base(),   # Base theme — no light-mode overrides
-        css=CUSTOM_CSS,
-    )
+    uvicorn.run(app, host="0.0.0.0", port=port)

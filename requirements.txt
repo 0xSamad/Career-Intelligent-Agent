@@ -7,3 +7,5 @@ ddgs
 langchain-community
 pymupdf
 python-docx
+fastapi
+uvicorn
