@@ -1,5 +1,8 @@
 import gradio as gr
 from crew import run_career_intelligence
+import pypdf
+import docx
+import os
 
 # ── Provider configuration ────────────────────────────────────────────────────
 PROVIDERS = {
@@ -13,25 +16,73 @@ GROQ_NOTE = (
     "Job search tools only work with Gemini or OpenAI."
 )
 
+# ── Resume Parsing ────────────────────────────────────────────────────────────
+def extract_text_from_pdf(file_path):
+    text = ""
+    try:
+        with open(file_path, "rb") as f:
+            reader = pypdf.PdfReader(f)
+            for page in reader.pages:
+                text += page.extract_text() + "\n"
+    except Exception as e:
+        print(f"Error parsing PDF: {e}")
+    return text
+
+def extract_text_from_docx(file_path):
+    text = ""
+    try:
+        doc = docx.Document(file_path)
+        for para in doc.paragraphs:
+            text += para.text + "\n"
+    except Exception as e:
+        print(f"Error parsing DOCX: {e}")
+    return text
+
+def parse_resume(file):
+    if file is None:
+        return ""
+    
+    file_path = file.name
+    ext = os.path.splitext(file_path)[1].lower()
+    
+    if ext == ".pdf":
+        return extract_text_from_pdf(file_path)
+    elif ext in [".docx", ".doc"]:
+        return extract_text_from_docx(file_path)
+    else:
+        return "Unsupported file format. Please upload PDF or DOCX."
+
 # ── Business logic ────────────────────────────────────────────────────────────
-def process_career_strategy(degree, university, skills, target_roles, experience, provider_label):
+def process_career_strategy(degree, university, skills, target_roles, experience, provider_label, resume_file=None, use_resume=False):
     provider = PROVIDERS.get(provider_label, "OpenAI")
-    if not degree or not degree.strip():
-        err = "### ❌ Validation Error\nPlease provide your **Degree / Major**."
-        return err, err, err, err
-    if not skills or not skills.strip():
-        err = "### ❌ Validation Error\nPlease provide your **Current Skills**."
-        return err, err, err, err
+    
+    if use_resume:
+        if resume_file is None:
+            err = "### ❌ Validation Error\nPlease upload your **Resume**."
+            return err, err, err, err
+        
+        profile = parse_resume(resume_file)
+        if not profile or len(profile.strip()) < 50:
+            err = "### ❌ Validation Error\nCould not extract sufficient text from resume. Please try manual entry."
+            return err, err, err, err
+    else:
+        if not degree or not degree.strip():
+            err = "### ❌ Validation Error\nPlease provide your **Degree / Major**."
+            return err, err, err, err
+        if not skills or not skills.strip():
+            err = "### ❌ Validation Error\nPlease provide your **Current Skills**."
+            return err, err, err, err
+        
+        profile = f"Degree: {degree}"
+        if university and university.strip():
+            profile += f" from {university}"
+        profile += f". Skills: {skills}."
+        if experience and experience.strip():
+            profile += f" Experience / Projects: {experience}."
+
     if not target_roles or not target_roles.strip():
         err = "### ❌ Validation Error\nPlease provide your **Target Roles**."
         return err, err, err, err
-
-    profile = f"Degree: {degree}"
-    if university and university.strip():
-        profile += f" from {university}"
-    profile += f". Skills: {skills}."
-    if experience and experience.strip():
-        profile += f" Experience / Projects: {experience}."
 
     try:
         results = run_career_intelligence(profile, target_roles, provider)
@@ -289,9 +340,29 @@ button#submit-btn {
 
 /* italic placeholder text in output tabs */
 .prose em { color: #475569 !important; font-style: italic !important; }
-"""
 
-# ── UI ────────────────────────────────────────────────────────────────────────
+/* Nested tabs styling */
+#left-panel .tab-nav {
+    margin-bottom: 12px !important;
+    border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+}
+#left-panel .tab-nav button {
+    font-size: 0.78rem !important;
+    padding: 7px 12px !important;
+}
+
+/* File upload styling */
+.gradio-container .upload-container {
+    background: rgba(15,23,42,0.4) !important;
+    border: 1px dashed rgba(139,92,246,0.3) !important;
+    border-radius: 10px !important;
+    color: #94a3b8 !important;
+}
+.gradio-container .file-preview {
+    background: rgba(15,23,42,0.6) !important;
+    border: 1px solid rgba(255,255,255,0.05) !important;
+}
+"""
 with gr.Blocks(title="Career Intelligence Agent") as app:
 
     with gr.Row(elem_id="top-header"):
@@ -310,12 +381,22 @@ with gr.Blocks(title="Career Intelligence Agent") as app:
                 value="Gemini (Free — supports tool use)",
             )
             groq_note = gr.Markdown(GROQ_NOTE, visible=False, elem_id="groq-note")
+            
+            # State to track if we're using resume upload
+            use_resume_state = gr.State(value=False)
 
-            degree       = gr.Textbox(label="Degree / Major *",     placeholder="e.g., BS Computer Science")
-            university   = gr.Textbox(label="University",            placeholder="e.g., IMS Peshawar")
-            skills       = gr.Textbox(label="Current Skills *",      placeholder="e.g., Python, React")
+            with gr.Tabs() as profile_tabs:
+                with gr.Tab("📝 Manual Entry", id="manual"):
+                    degree       = gr.Textbox(label="Degree / Major *",     placeholder="e.g., BS Computer Science")
+                    university   = gr.Textbox(label="University",            placeholder="e.g., IMS Peshawar")
+                    skills       = gr.Textbox(label="Current Skills *",      placeholder="e.g., Python, React")
+                    experience   = gr.Textbox(label="Experience / Projects", placeholder="e.g., Built Flask REST API", lines=3)
+                
+                with gr.Tab("📄 Upload Resume", id="resume"):
+                    resume_file = gr.File(label="Upload Resume (PDF or DOCX)", file_types=[".pdf", ".docx"])
+                    gr.Markdown("*(Agent will extract your degree, skills, and experience from the file)*")
+
             target_roles = gr.Textbox(label="Target Roles *",        placeholder="e.g., Data Engineer")
-            experience   = gr.Textbox(label="Experience / Projects", placeholder="e.g., Built Flask REST API", lines=3)
 
             submit_btn = gr.Button(
                 "🚀  Generate Career Intelligence Report",
@@ -339,9 +420,14 @@ with gr.Blocks(title="Career Intelligence Agent") as app:
 
     # Events
     provider.change(fn=toggle_groq_note, inputs=provider, outputs=groq_note)
+    
+    # Update state based on tab selection
+    # index 0 is Manual, index 1 is Resume
+    profile_tabs.select(fn=lambda evt: evt.index == 1, inputs=None, outputs=use_resume_state)
+
     submit_btn.click(
         fn=process_career_strategy,
-        inputs=[degree, university, skills, target_roles, experience, provider],
+        inputs=[degree, university, skills, target_roles, experience, provider, resume_file, use_resume_state],
         outputs=[jobs_out, match_out, gap_out, roadmap_out],
     )
 
