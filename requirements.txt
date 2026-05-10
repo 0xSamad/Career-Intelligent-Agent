@@ -9,3 +9,4 @@ pymupdf
 python-docx
 fastapi
 uvicorn
+litellm
