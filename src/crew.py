@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from crewai import LLM, Agent, Task, Crew, Process
 from crewai.tools import tool
 from ddgs import DDGS
+from utils import get_next_groq_key
 
 # Force UTF-8 output to avoid charmap errors on Windows
 sys.stdout = open(sys.stdout.fileno(), mode='w', encoding='utf-8', buffering=1)
@@ -189,13 +190,15 @@ def get_llm(provider: str) -> LLM:
     Get the appropriate LLM based on the provider string.
     """
     provider_lower = provider.lower()
-    if 'gemini' in provider_lower:
-        return LLM(model="gemini/gemini-1.5-flash")
-    elif 'groq' in provider_lower:
-        return LLM(model="groq/llama-3.3-70b-versatile")
+    if 'groq' in provider_lower:
+        return LLM(
+            model="groq/llama-3.3-70b-versatile",
+            api_key=get_next_groq_key()
+        )
     elif 'claude' in provider_lower:
         return LLM(model="anthropic/claude-3-5-haiku-20241022")
     else:
+        # Default to OpenAI
         return LLM(model="gpt-4o-mini")
 
 def supports_tools(provider: str) -> bool:
@@ -233,16 +236,16 @@ def run_career_intelligence(profile: str, interests: str, provider: str) -> dict
     
     gap_agent = Agent(
         role="Skills Gap Analyst",
-        goal="Identify skills gap and provide salary data.",
-        backstory="An analyst who identifies what skills a candidate is missing and researches salary expectations.",
+        goal="Identify skills gap, calculate a Skill Gap Severity Score, estimate a realistic learning timeline, and provide salary data.",
+        backstory="An expert analyst who quantifies missing skills against target roles to determine realistic learning timelines and researches salary expectations.",
         llm=llm,
         tools=[search_salary_data] if use_tools else []
     )
     
     roadmap_agent = Agent(
         role="Career Roadmap Planner",
-        goal="Create an 8-week learning roadmap based on skills gaps.",
-        backstory="A career coach who creates actionable learning plans.",
+        goal="Create an adaptive learning roadmap tailored to the estimated timeline and skill gap severity.",
+        backstory="An elite career coach who crafts highly personalized, dynamically scaled learning plans.",
         llm=llm,
         tools=[search_courses] if use_tools else []
     )
@@ -262,15 +265,38 @@ def run_career_intelligence(profile: str, interests: str, provider: str) -> dict
     )
     
     gap_task = Task(
-        description="Create a priority ranking of missing skills and search for salary data based on the matcher's context.",
-        expected_output="A prioritized list of missing skills and average salary data.",
+        description=(
+            "Analyze the matcher's context and the user's profile to create a priority ranking of missing skills. "
+            "Calculate a 'Skill Gap Severity Score' (0-100) where 100 means a massive gap (beginner) and 0 means no gap (advanced). "
+            "Based strictly on this score and the user's existing experience, determine an 'Estimated Timeline' "
+            "(e.g., '6-12 Months' for beginners, '2-6 Months' for intermediate, '2-8 Weeks' for advanced). "
+            "Finally, search for relevant salary data."
+        ),
+        expected_output=(
+            "A detailed analysis including:\n"
+            "1. Skill Gap Severity Score (with reasoning)\n"
+            "2. Estimated Timeline (with justification based on the score and experience)\n"
+            "3. Prioritized list of missing skills\n"
+            "4. Average salary data."
+        ),
         agent=gap_agent,
         context=[match_task]
     )
     
     roadmap_task = Task(
-        description="Generate a week-by-week 8-week roadmap specifying courses, projects, and unlocks based on the gap context.",
-        expected_output="A week-by-week 8-week roadmap with recommended courses, projects, and career unlocks.",
+        description=(
+            "Using the 'Estimated Timeline' and 'Skill Gap Severity Score' from the gap context, "
+            "generate a highly personalized learning roadmap. "
+            "CRITICAL: Do NOT default to 8 weeks. Scale the roadmap duration to exactly match the Estimated Timeline. "
+            "If the timeline is in months (Beginner/Intermediate), organize the roadmap by phases or months. "
+            "If the timeline is in weeks (Advanced), organize week-by-week. "
+            "Include foundational concepts for beginners, and skip them for advanced users. "
+            "Include recommended courses, projects, and career unlocks tailored to the user's level."
+        ),
+        expected_output=(
+            "A realistic, dynamically scaled learning roadmap that explicitly states the 'Estimated Timeline' at the top, "
+            "followed by step-by-step guidance tailored to the user's specific skill gap severity."
+        ),
         agent=roadmap_agent,
         context=[gap_task]
     )

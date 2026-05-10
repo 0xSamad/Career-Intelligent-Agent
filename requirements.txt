@@ -5,5 +5,5 @@ python-dotenv
 langchain-openai
 ddgs
 langchain-community
-pypdf
+pymupdf
 python-docx
